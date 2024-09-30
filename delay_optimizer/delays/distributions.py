@@ -20,11 +20,12 @@ class DelayDistribution():
 class DiscreteDelay(DelayDistribution):
     """Abstract base class for discrete delay distributions.
     
-    These delay distributions are defined by the sample method, which returns a tensor
-    of integer delays according to the input size and iteration number.
+    These delay distributions are defined by the sample method, which returns a 
+    tensor of integer delays according to the input size and iteration number.
 
-    Calling an instance of a DiscreteDelay object samples a delay distribution for the
-    given parameter state and history and applies the delays to the parameter state.
+    Calling an instance of a DiscreteDelay object samples a delay distribution 
+    for the given parameter state and history and applies the delays to the 
+    parameter state.
     """
     def sample(self, size, iteration_num):
         raise NotImplementedError("Subclasses must implement the `sample` method")
@@ -35,11 +36,11 @@ class DiscreteDelay(DelayDistribution):
         Parameters:
             param (torch.tensor): Current undelayed parameter state
             param_history (torch.tensor): History of past parameter states
-            iteration_num (int): Current iteration number in the optimization process
+            iteration_num (int): Current iteration in the optimization process
 
         Returns:
-            torch.tensor: Delayed parameter state
-            torch.tensor: Updated parameter history
+            (torch.tensor): Delayed parameter state
+            (torch.tensor): Updated parameter history
         """
         full_param_state = torch.cat([param.detach().unsqueeze(0), param_history], dim=0)
         if iteration_num >= self.num_delays:    # TODO: Consider using dynamic max_L and param_history
