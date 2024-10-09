@@ -1,2 +1,2 @@
-from .pytorch_optimizer import DelayedOptimizer
+from .delayed_optimizer import DelayedOptimizer
 from . import distributions
