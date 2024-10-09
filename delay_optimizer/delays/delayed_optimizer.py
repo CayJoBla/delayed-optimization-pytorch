@@ -1,8 +1,9 @@
 import torch
 from torch.optim import Optimizer
 from torch.optim.optimizer import _get_scalar_dtype, ParamsT
-
 from typing import Union, Callable, Optional, Type
+
+from .utils import ParamHistoryBuffer
 
 
 # TODO: Ideally the application of delays should be done in parallel (with GPU 
@@ -28,16 +29,16 @@ class DelayedOptimizer(Optimizer):
         *,
         delay: Union[int, Callable] = 0,
         max_L: Optional[int] = None,
-        initial_history: Optional[torch.Tensor] = None,
+        initialize_history: Optional[Callable] = None,
         **optimizer_kwargs
     ):
         self._optimizer = optimizer_class(params, **optimizer_kwargs)
         self._optimizer.defaults['delay'] = delay
         self._optimizer.defaults['max_L'] = max_L
-        if initial_history is None:
+        if initialize_history is None:
             self._optimizer.defaults['init_history'] = self._init_param_history
         else:
-            self._optimizer.defaults['init_history'] = initial_history
+            self._optimizer.defaults['init_history'] = initialize_history
         
         self._init_delayed_param_groups()
     
@@ -54,10 +55,9 @@ class DelayedOptimizer(Optimizer):
         """
         L = param_group["max_L"]
         if L == 0:
-            history = [torch.empty(0, *p.size()) for p in param_group["params"]]
+            history = [None for p in param_group["params"]]
         else:
-            history = [torch.stack([p.clone().detach() for _ in range(L)],
-                                    dim=0) for p in param_group["params"]]
+            history = [ParamHistoryBuffer(p, L) for p in param_group["params"]]
         param_group["history"] = history
 
     def _init_delayed_param_groups(self):
@@ -89,36 +89,28 @@ class DelayedOptimizer(Optimizer):
 
             param_group["max_L"] = L
             param_group["delay"] = delay
-            initial_history = param_group.get("init_history", 
-                                self._optimizer.defaults["init_history"])
-            initial_history(param_group)
+            initialize_history = param_group.get("init_history", 
+                                    self._optimizer.defaults["init_history"])
+            initialize_history(param_group)
 
             # Check the size of the delay history
             for i in range(len(params)):
                 param = params[i]
-                param_history = param_group["history"][i]
-                if param_history.shape != (L,)+param.shape:
-                    raise ValueError("Invalid parameter history shape: "
-                                    f"{tuple(param_history.shape)} where size "
-                                    f"{(L,)+param.shape} was expected.")
+                if param_group["max_L"] > 0:
+                    param_history = param_group["history"][i]
+                    if param_history.shape != (L,)+param.shape:
+                        raise ValueError("Invalid parameter history shape: "
+                                        f"{param_history.shape} where size "
+                                        f"{(L,)+param.shape} was expected.")
             if L > max_L:
                 max_L = L
 
         self.max_L = max_L
 
+    @torch.no_grad()
     def apply_delays(self):
-        """My current vision is that the user would call this function before 
-        running a forward pass through the model, similar to `zero_grad`. This 
-        function applies delays to the parameters in the model as specified 
-        during initialization. 
-
-        Alternatively, delays could be applied in the 'zero_grad' function, but 
-        I think that falls away from the purpose of that function. Furthermore, 
-        the separation of this method allows the user to follow a custom delay 
-        schedule, if desired.
-
-        This function should be called before the forward pass through the model 
-        in order to compute the correct gradient and loss values.
+        """Applies delays to the parameters in the model as specified during 
+        initialization. Should be called before forward pass through the model.
         """
         # TODO: Implement parallelization for applying delays
         for group in self.param_groups:
@@ -130,14 +122,8 @@ class DelayedOptimizer(Optimizer):
                     "step", 
                     torch.tensor(0.0, dtype=_get_scalar_dtype())
                 )
-                with torch.no_grad(): 
-                    delayed_param, updated_history = group["delay"](
-                        param, 
-                        param_history, 
-                        iteration_num
-                    )
-                    param.copy_(delayed_param)
-                    param_history.copy_(updated_history)
+                group["delay"](param, param_history, iteration_num)
+
 
     def step(self, closure=None):
         return self._optimizer.step(closure)

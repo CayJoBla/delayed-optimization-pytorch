@@ -13,9 +13,22 @@ class DelayDistribution():
     def __str__(self):
         return self.__class__.__name__
 
-    def __call__(self, param, param_history, iteration_num):
-        raise NotImplementedError("Subclasses must implement the `__call__` method")
+    def is_undelayed(self, iteration_num):
+        return (iteration_num >= self.num_delays) or (self.max_L == 0)
 
+    @staticmethod
+    def undelayed_update(param, param_history):
+        if param_history is not None:
+            param_history.update(param)
+        return param, param_history
+
+    @staticmethod
+    def undelayed_check(function):
+        def wrapper(self, param, param_history, iteration_num):
+            if self.is_undelayed(iteration_num):
+                return DelayDistribution.undelayed_update(param, param_history)
+            return function(self, param, param_history, iteration_num)
+        return wrapper
 
 class DiscreteDelay(DelayDistribution):
     """Abstract base class for discrete delay distributions.
@@ -30,6 +43,7 @@ class DiscreteDelay(DelayDistribution):
     def sample(self, size, iteration_num):
         raise NotImplementedError("Subclasses must implement the `sample` method")
 
+    @DelayDistribution.undelayed_check
     def __call__(self, param, param_history, iteration_num):
         """Apply delays to the given parameter state.
 
@@ -42,15 +56,17 @@ class DiscreteDelay(DelayDistribution):
             (torch.tensor): Delayed parameter state
             (torch.tensor): Updated parameter history
         """
-        full_param_state = torch.cat([param.detach().unsqueeze(0), param_history], dim=0)
-        if iteration_num >= self.num_delays:    # TODO: Consider using dynamic max_L and param_history
-            return param, full_param_state[:-1]
-        D = self.sample(param.size(), iteration_num)
-        delayed_param = full_param_state.gather(0, D.unsqueeze(0)).squeeze(0)
-        return delayed_param, full_param_state[:-1]
+        delay_array = self.sample(param.size(), iteration_num)
+        delayed_mask = (delay_array > 0)
+        if not delayed_mask.any():
+            return DelayDistribution.undelayed_update(param, param_history)
+        delayed_values = param_history[delay_array[delayed_mask], 
+                            *delayed_mask.nonzero(as_tuple=True)]
+        param_history.update(param)
+        param[delayed_mask] = delayed_values
+        return param, param_history
 
-
-class ParallelDiscreteDelay(DiscreteDelay):
+class ParallelDiscreteDelay(DelayDistribution):
     """Abstract base class for discrete delay distributions that may not be constant in 
     time, but they always apply the same delay to all parameters at a given iteration.
 
@@ -60,49 +76,32 @@ class ParallelDiscreteDelay(DiscreteDelay):
     def get_delay(self, iteration_num):
         raise NotImplementedError("Subclasses must implement the `get_delay` method")
 
-    def sample(self, size, iteration_num):
-        """This method is not necessary, but is implemented for consistency."""
-        L = self.get_delay(iteration_num)
-        return torch.full(size, L, dtype=torch.int)
-
+    @DelayDistribution.undelayed_check
     def __call__(self, param, param_history, iteration_num):
-        full_param_state = torch.cat([param.detach().unsqueeze(0), param_history], dim=0)
-        L = self.get_delay(iteration_num) if iteration_num < self.num_delays else 0
-        if L < 0:
-            raise ValueError(f"Delay length cannot be negative. Got value {L}")
-        return full_param_state[L], full_param_state[:-1]
-
+        L = self.get_delay(iteration_num)
+        if L == 0:
+            return DelayDistribution.undelayed_update(param, param_history)
+        delayed_values = param_history[L]
+        param_history.update(param)
+        param.copy_(delayed_values)
+        return param, param_history
         
-class Undelayed(ParallelDiscreteDelay):
+class Undelayed(DelayDistribution):
+    """Distribution that applies no delays to the parameter state."""
     def __init__(self):
         super().__init__(max_L=0, num_delays=0)
 
-    def get_delay(self, iteration_num):
-        return 0
+    def __call__(self, param, param_history, iteration_num):
+        # NOTE: This assumes that the parameter history is always empty
+        return param, param_history
 
 class Uniform(ParallelDiscreteDelay):
     def get_delay(self, iteration_num):
-        if iteration_num < self.num_delays:
-            return self.max_L
-        return 0
-
-class Decaying(ParallelDiscreteDelay):
-    def __init__(self, max_L, num_delays):
-        if num_delays == -1:
-            raise ValueError("Must specify a positive finite number of delays for decaying delay distributions")
-        super().__init__(max_L, num_delays)
-
-    def get_delay(self, iteration_num):
-        if iteration_num < self.num_delays:
-            return self.max_L - int(iteration_num * self.max_L / self.num_delays)
-        return 0
-
+        return self.max_L
         
 class Stochastic(DiscreteDelay):
     def sample(self, size, iteration_num):
-        if iteration_num < self.num_delays:
-            return torch.randint(0, self.max_L+1, size=size)
-        return torch.zeros(size, dtype=int)
+        return torch.randint(0, self.max_L+1, size=size)
 
 class Constant(DiscreteDelay):
     def __init__(self, D: torch.tensor, num_delays: int):
@@ -112,12 +111,7 @@ class Constant(DiscreteDelay):
         self.D = torch.int(D)
 
     def sample(self, size, iteration_num):
-        if iteration_num < self.num_delays:
-            if size != self.D.shape:
-                raise ValueError("Constant delay vector D does not match the parameter size")
-            else:
-                return self.D
-        return torch.zeros_like(self.D)
+        return self.D
     
 
 
