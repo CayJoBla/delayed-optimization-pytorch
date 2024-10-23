@@ -1,0 +1,1 @@
+from .mnist_2c2d import mnist_2c2d_net
