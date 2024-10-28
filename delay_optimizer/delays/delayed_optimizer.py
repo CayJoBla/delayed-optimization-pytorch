@@ -1,9 +1,9 @@
 import torch
 from torch.optim import Optimizer
 from torch.optim.optimizer import _get_scalar_dtype, ParamsT
-
 from typing import Union, Callable, Optional, Type
 
+from .distributions import DelayDistribution
 
 # TODO: Ideally the application of delays should be done in parallel (with GPU 
 #       support), but I would need to look into that more
@@ -26,14 +26,12 @@ class DelayedOptimizer(Optimizer):
         params: ParamsT,
         optimizer_class: Type[Optimizer],
         *,
-        delay: Union[int, Callable] = 0,
-        max_L: Optional[int] = None,
-        initial_history: Optional[torch.Tensor] = None,
+        delay: DelayDistribution,
+        initial_history: Optional[torch.Tensor] = None,         # TODO: Check the typing here
         **optimizer_kwargs
     ):
         self._optimizer = optimizer_class(params, **optimizer_kwargs)
         self._optimizer.defaults['delay'] = delay
-        self._optimizer.defaults['max_L'] = max_L
         if initial_history is None:
             self._optimizer.defaults['init_history'] = self._init_param_history
         else:
