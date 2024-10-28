@@ -29,7 +29,6 @@ class TrainConfig:
         lr_scheduler = None,
         do_train = True,
         do_validate = True,
-        do_test = True,
         **kwargs
     ):
         self.batch_size = batch_size
@@ -37,7 +36,6 @@ class TrainConfig:
         self.lr_scheduler = lr_scheduler
         self.do_train = do_train
         self.do_validate = do_validate
-        self.do_test = do_test
 
         # Get other lr_scheduler hyperparameters
         self.lr_scheduler_kwargs = {}
@@ -51,7 +49,7 @@ class LoggingConfig:
         self, 
         logging_steps = 100, 
         do_progress_bar = True, 
-        wandb_project = 'delayed-optimization', 
+        wandb_project = None, 
         run_name = None, 
         save_dir = None,
         **kwargs

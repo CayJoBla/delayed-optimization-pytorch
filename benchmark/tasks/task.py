@@ -22,8 +22,8 @@ class OptimizationTask:
 
         # Skip training if not requested
         if not train_config.do_train:
-            if train_config.do_test:
-                return self.run_test(logging_config.do_progress_bar)
+            if train_config.do_validate:
+                return self.run_validation()
             else:
                 return
 
@@ -40,100 +40,65 @@ class OptimizationTask:
             lr_scheduler = lr_scheduler(**train_config.lr_scheduler_kwargs)
 
         # Set up logging
-        defaults = {k: v for k, v in optimizer.defaults.items() if k != 'init_history'}
-        wandb_config = {
-            "name": logging_config.run_name,
-            "model": self.model.__class__.__name__,
-            "optimizer": optimizer_config.optimizer_class.__name__,
-            "defaults": defaults,
-            "batch_size": train_config.batch_size,
-            "num_epochs": train_config.num_epochs,
-            "lr_scheduler": lr_scheduler.__class__.__name__ if lr_scheduler is not None else "None",
-        }
+        run = None
+        if logging_config.wandb_project is not None:
+            wandb.login()
+            defaults = {k: v for k, v in optimizer.defaults.items() if k != 'init_history'}
+            wandb_config = {
+                "name": logging_config.run_name,
+                "model": self.model.__class__.__name__,
+                "optimizer": optimizer_config.optimizer_class.__name__,
+                "defaults": defaults,
+                "batch_size": train_config.batch_size,
+                "num_epochs": train_config.num_epochs,
+                "lr_scheduler": lr_scheduler.__class__.__name__ if lr_scheduler is not None else "None",
+            }
+            run = wandb.init(
+                project=logging_config.wandb_project, 
+                name=logging_config.run_name, 
+                config=wandb_config
+            )
 
-        # Setup logging context manager
-        run = wandb.init(
-            project=logging_config.wandb_project, 
-            name=logging_config.run_name, 
-            config=wandb_config
-        )
-        with run:
-            # Training loop
-            train_correct = 0
-            train_num_items = 0
-            global_step = 0
-            for epoch in range(train_config.num_epochs):
-                self.model.train()
-                if logging_config.do_progress_bar:     # Initialize progress bar
-                    pbar = tqdm(self.data.train_loader, desc=f"Epoch: {epoch}")
-                    eval_pbar = tqdm(self.data.val_loader)
-                else:
-                    pbar = self.data.train_loader
-                    eval_pbar = self.data.val_loader
+        def train_log_callback(loss, output, labels, pbar=None):
+            global_step += 1
+            if global_step % logging_config.logging_steps == 0:
+                train_preds = torch.argmax(output, dim=-1)
+                train_correct = torch.sum(train_preds == labels).cpu().item()
+                train_acc = train_correct / len(labels)
+                if run is not None:
+                    run.log({
+                        "train/global_step": global_step,
+                        "train/epoch": global_step / len(self.data.train_loader),
+                        "train/loss": loss.cpu().item(),
+                        "train/accuracy": train_acc,
+                    })
+                if logging_config.do_progress_bar and pbar is not None:
+                    pbar.set_postfix_str({
+                        f"Train Loss: {loss:.4f}, "
+                        f"Train Acc.: {train_acc:.4f}"
+                    })
 
-                # Do training epoch
-                for batch, labels in pbar:
-                    global_step += 1
-                    batch = batch.to(self.device)
-                    labels = labels.to(self.device)
+        # Training loop
+        global_step = 0
+        do_progress_bar = logging_config.do_progress_bar
+        for epoch in range(train_config.num_epochs):
+            train_loader = self.data.train_loader
+            if do_progress_bar:         # Set up progress bar
+                train_loader = tqdm(train_loader, desc=f"Train (Epoch: {epoch})")
 
-                    # Forward pass
-                    optimizer.apply_delays()
-                    output = self.model(batch)
-                    loss = self.loss_func(output, labels)
+            self._train_epoch(train_loader, logging_callback=train_log_callback)
 
-                    # Backward pass
-                    loss.backward()
-                    optimizer.step()                
-                    optimizer.zero_grad()
+            # Update lr scheduler after each epoch
+            if lr_scheduler is not None:
+                lr_scheduler.step()
 
-                    # Compute training metrics
-                    train_preds = torch.argmax(output, dim=-1)
-                    train_correct += torch.sum(train_preds == labels).cpu().item()
-                    train_num_items += len(labels)
+            # Run validation on the model at the end of each epoch
+            if train_config.do_validate:
+                val_loss, val_acc = self.run_validation(do_progress_bar)
 
-                    # Log
-                    if global_step % logging_config.logging_steps == 0:
-                        train_acc = train_correct / train_num_items
-                        run.log({
-                            "train/global_step": global_step,
-                            "train/epoch": global_step / len(self.data.train_loader),
-                            "train/loss": loss.cpu().item(),
-                            "train/accuracy": train_acc,
-                        })
-                        train_correct, train_num_items = 0, 0
-                        if logging_config.do_progress_bar:
-                            pbar.set_description(
-                                f"Epoch: {epoch}, Loss: {loss.cpu().item():.4f}, Accuracy: {train_acc:.4f}"
-                            )
-
-                # Update lr scheduler after each epoch
-                if lr_scheduler is not None:
-                    lr_scheduler.step()
-
-                # Run validation on the model at the end of each epoch
-                if train_config.do_validate:
-                    eval_loss = 0
-                    eval_correct = 0
-                    eval_num_items = 0
-
-                    self.model.eval()
-                    with torch.no_grad():
-                        for i, (batch, labels) in enumerate(eval_pbar):
-                            batch = batch.to(self.device)
-                            labels = labels.to(self.device)
-                            output = self.model(batch)
-                            eval_loss += self.loss_func(output, labels).cpu().item()
-                            eval_preds = torch.argmax(output, dim=-1)
-                            eval_correct += torch.sum(eval_preds == labels).cpu().item()
-                            eval_num_items += len(labels)
-                            if logging_config.do_progress_bar:
-                                eval_pbar.set_description(
-                                    f"Eval Loss: {eval_loss / (i+1):.4f}, Eval Accuracy: {eval_correct / eval_num_items:.4f}"
-                                )
-
-                    # Log vaidation metrics
-                    wandb.log({
+                # Log vaidation metrics
+                if run is not None:
+                    run.log({
                         "train/global_step": global_step,
                         "train/epoch": epoch + 1,
                         "eval/loss": eval_loss / len(self.data.val_loader),
@@ -153,9 +118,56 @@ class OptimizationTask:
             }
             torch.save(train_state, path)
 
-        # Return test accuracy
-        if train_config.do_test:
-            return self.run_test(logging_config.do_progress_bar)
+    def _train_epoch(self, train_loader, logging_callback=None):
+        self.model.train()
+        for i, (batch, labels) in enumerate(train_loader):
+            batch = batch.to(self.device)
+            labels = labels.to(self.device)
+
+            # Forward pass
+            optimizer.zero_grad()
+            optimizer.apply_delays()
+            output = self.model(batch)
+            loss = self.loss_func(output, labels)
+
+            # Backward pass
+            loss.backward()
+            optimizer.step()
+
+            # Log training metrics
+            if logging_callback is not None:
+                logging_callback(
+                    loss.cpu().item(), output, labels, pbar=train_loader
+                )
+
+    def run_validation(self, do_progress_bar=True):
+        val_loader = self.data.val_loader
+        if do_progress_bar:
+            val_loader = tqdm(val_loader)
+
+        val_total_loss = 0
+        val_correct = 0
+        val_num_items = 0
+
+        self.model.eval()
+        with torch.no_grad():
+            for i, (batch, labels) in enumerate(val_loader):
+                batch = batch.to(self.device)
+                labels = labels.to(self.device)
+                output = self.model(batch)
+                val_total_loss += self.loss_func(output, labels).cpu().item()
+                val_preds = torch.argmax(output, dim=-1)
+                val_correct += torch.sum(val_preds == labels).cpu().item()
+                val_num_items += len(labels)
+                if do_progress_bar:
+                    val_loader.set_postfix_str({
+                        f"Validation Loss: {val_total_loss / (i+1):.4f}, "
+                        f"Validation Acc.: {val_correct / val_num_items:.4f}"
+                    })
+
+        loss = val_total_loss / len(val_loader)
+        acc = val_correct / val_num_items
+        return loss, acc
 
     def run_test(self, do_progress_bar=True):
         if do_progress_bar:
