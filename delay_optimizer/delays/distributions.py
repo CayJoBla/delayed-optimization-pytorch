@@ -35,13 +35,14 @@ class DiscreteDelay(DelayDistribution, metaclass=ABCMeta):
     tensor of integer delays according to the input size and iteration number.
     """
     @abstractmethod
-    def sample(self, size, iteration_num):
+    def sample(self, size, iteration_num) -> torch.Tensor:
+        """Returns a tensor of integer delays according to the input size and
+        iteration number.
+        """
         pass
 
     def __call__(self, param, param_history, iteration_num):
         full_param_state = torch.cat([param.detach().unsqueeze(0), param_history], dim=0)
-        if iteration_num >= self.num_delays:    # TODO: Consider using dynamic max_L and param_history
-            return param, full_param_state[:-1]
         D = self.sample(param.size(), iteration_num)
         delayed_param = full_param_state.gather(0, D.unsqueeze(0)).squeeze(0)
         return delayed_param, full_param_state[:-1]
@@ -53,27 +54,24 @@ class ParallelDiscreteDelay(DelayDistribution, metaclass=ABCMeta):
     at a given iteration.
     """
     @abstractmethod
-    def get_delay(self, iteration_num):
+    def get_delay(self, iteration_num) -> int:
+        """Returns the parallel delay length at the given iteration number."""
         pass
 
     def __call__(self, param, param_history, iteration_num):
         full_param_state = torch.cat([param.detach().unsqueeze(0), param_history], dim=0)
-        L = self.get_delay(iteration_num) if iteration_num < self.num_delays else 0
+        L = self.get_delay(iteration_num)
         if L < 0:
             raise ValueError(f"Delay length cannot be negative. Got value {L}")
         return full_param_state[L], full_param_state[:-1]
 
-
-class Undelayed(ParallelDiscreteDelay):
-    def __init__(self):
-        super().__init__(max_L=0)
-
-    def get_delay(self, iteration_num):
-        return 0
-
 class Uniform(ParallelDiscreteDelay):
     def get_delay(self, iteration_num):
         return self.max_L
+
+class Undelayed(Uniform):
+    def __init__(self):
+        super().__init__(max_L=0)
 
 class Decaying(ParallelDiscreteDelay):
     def __init__(self, max_L, step_size):
