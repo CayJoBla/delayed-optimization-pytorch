@@ -60,6 +60,7 @@ class DelayedOptimizer(Optimizer):
         for param_group in self._optimizer.param_groups:
             param_group["delay"] = param_group.get("delay", 
                                     self._optimizer.defaults["delay"])
+            L = param_group["delay"].max_L
             initial_history = param_group.get("init_history", 
                                 self._optimizer.defaults["init_history"])
             initial_history(param_group)    # TODO: Is this the baest way to do this?
@@ -75,7 +76,6 @@ class DelayedOptimizer(Optimizer):
                                     f"{(L,)+param.shape} was expected.")
 
             # Get the maximal delay length over all parameter groups
-            L = param_group["delay"].max_L
             if L > self.max_L:
                 self.max_L = L
 
