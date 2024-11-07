@@ -11,6 +11,8 @@ from benchmark import tasks
 from benchmark.runner import Runner, RunConfig
 from delay_optimizer.delays.distributions import Undelayed, Uniform, Stochastic
 
+DELAY_BUFFER = os.path.exists("delay_optimizer/delays/utils.py")
+
 def run_grid_search(task, optimizer, delay, max_L, lr, momentum, batch_size, 
                     num_epochs, output_dir, do_progress_bar):
     # Get task and training runner
@@ -47,13 +49,16 @@ def run_grid_search(task, optimizer, delay, max_L, lr, momentum, batch_size,
     results = []
     for hyperparams in grid_search(search_space):
         print(f"Running with hyperparameters: {hyperparams}")
-        run_config = RunConfig(**train_config, **hyperparams)
         runner.reset()
+        run_config = RunConfig(**train_config, **hyperparams)
+        start_time = time.time()
         result = runner.run(run_config)
         results.append({
             "params": run_config.to_dict(),
             "results": result,
-            "run_dir": runner._run.dir
+            "run_dir": runner._run.dir,
+            "run_time": time.time() - start_time,
+            "delay_alg": "buffer" if DELAY_BUFFER else "default",
         })
 
     # Save results to output_dir
