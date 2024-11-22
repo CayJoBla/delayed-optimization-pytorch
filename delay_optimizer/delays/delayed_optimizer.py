@@ -27,11 +27,6 @@ class DelayedOptimizer(Optimizer):
             delay = Uniform(max_L=delay) if delay > 0 else Undelayed()
         self._optimizer = optimizer_class(params, **optimizer_kwargs)
         self._optimizer.defaults['delay'] = delay
-        if initial_history is None:
-            self._optimizer.defaults['init_history'] = self._init_param_history
-        else:
-            self._optimizer.defaults['init_history'] = initialize_history
-        
         self._init_delayed_param_groups()
     
     def __getattr__(self, name):
@@ -39,64 +34,39 @@ class DelayedOptimizer(Optimizer):
             return self.__dict__[name]
         return getattr(self._optimizer, name)
 
-    def _init_param_history(self, param_group):
-        """Default parameter history initialization. 
-
-        Default behavior is to initialize the history with L copies of the 
-        current parameter value, or an empty tensor if L=0.
-        """
-        L = param_group["delay"].max_L
-        if L == 0:
-            history = [None for p in param_group["params"]]
-        else:
-            history = [ParamHistoryBuffer(p, L) for p in param_group["params"]]
-        param_group["history"] = history
-
     def _init_delayed_param_groups(self):
-        """Initialize delay parameters for each parameter group, including past 
-        parameters and maximal delay length, for each parameter group.
+        """Initialize delay parameters for each parameter group, including 
+        delays, parameter histories, and maximal delay length.
         """
-        self.max_L = 0
+        self.max_L = 0      # Max delay lengths over all parameter groups
+        default_delay = self._optimizer.defaults["delay"]
         for param_group in self._optimizer.param_groups:
-            param_group["delay"] = param_group.get("delay", 
-                                    self._optimizer.defaults["delay"])
+            param_group["delay"] = param_group.get("delay", default_delay)
             L = param_group["delay"].max_L
-            initial_history = param_group.get("init_history", 
-                                self._optimizer.defaults["init_history"])
-            initial_history(param_group)    # TODO: Is this the baest way to do this?
+            param_group["history"] = [
+                ParamHistoryBuffer(p, L) for p in param_group["params"]
+            ] if L > 0 else None
 
-            # Check the size of the delay history
-            params = param_group["params"]
-            for i in range(len(params)):
-                param = params[i]
-                param_history = param_group["history"][i]
-                if param_history.shape != (L,)+param.shape:
-                    raise ValueError("Invalid parameter history shape: "
-                                    f"{tuple(param_history.shape)} where size "
-                                    f"{(L,)+param.shape} was expected.")
-
-            # Get the maximal delay length over all parameter groups
             if L > self.max_L:
                 self.max_L = L
 
     @torch.no_grad()
-    def apply_delays(self):
+    def apply_delays(self, parallelize=False):
         """Applies delays to the parameters being optimized.
 
         Should be called before the forward pass in order to compute the correct
         gradient and loss values.
         """
+        # TODO: Do I need to separate updating the history and applying the delays?
         # TODO: Implement parallelization for applying delays
         for group in self.param_groups:
-            for i, (param, param_history) in enumerate(zip(group["params"],
-                                                            group["history"])):
-                iteration_num = self.state[param].get(
-                    "step", 
-                    torch.tensor(0.0, dtype=_get_scalar_dtype())
-                )
-                group["delay"](param, param_history, iteration_num)
-
-
+            if group["delay"].max_L == 0:
+                continue
+            for i, param in enumerate(group["params"]):
+                iteration_num = self.state[param].get("step", torch.tensor(0.))
+                param_history = group["history"][i]
+                group["delay"](param, param_history, iteration_num) 
+                
     def step(self, closure=None):
         return self._optimizer.step(closure)
 

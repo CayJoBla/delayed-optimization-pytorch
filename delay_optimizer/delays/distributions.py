@@ -15,16 +15,12 @@ class DelayDistribution(metaclass=ABCMeta):
 
     @abstractmethod
     def __call__(self, param, param_history, iteration_num):
-        """Apply delays to the given parameter state.
+        """Apply delays inplace to the given parameter state.
 
         Parameters:
             param (torch.tensor): Current undelayed parameter state
             param_history (torch.tensor): History of past parameter states
             iteration_num (int): Current iteration in the optimization process
-
-        Returns:
-            (torch.tensor): Delayed parameter state
-            (torch.tensor): Updated parameter history
         """
         pass
 
@@ -36,19 +32,13 @@ class DiscreteDelay(DelayDistribution, metaclass=ABCMeta):
     """
     @abstractmethod
     def sample(self, size, iteration_num):
-        """Returns a tensor of integer delays according to the input size and
-        iteration number.
-        """
+        """Returns a tensor of integer delays matching the parameter shape."""
         pass
 
     def __call__(self, param, param_history, iteration_num):
-        delay_array = self.sample(param.size(), iteration_num)
-        delayed_mask = (delay_array > 0)
-        delayed_values = param_history[delay_array[delayed_mask], 
-                            *delayed_mask.nonzero(as_tuple=True)]
         param_history.update(param)
-        param[delayed_mask] = delayed_values
-        return param, param_history
+        delay_array = self.sample(param.size(), iteration_num)
+        param_history.delay_param(delay_array, out=param)
 
 
 class ParallelDiscreteDelay(DelayDistribution, metaclass=ABCMeta):
@@ -58,19 +48,14 @@ class ParallelDiscreteDelay(DelayDistribution, metaclass=ABCMeta):
     """
     @abstractmethod
     def get_delay(self, iteration_num):
-        """Returns the parallel delay length at the given iteration number."""
+        """Returns the parallel delay length as a 0-dimensional tensor."""
         pass
 
     def __call__(self, param, param_history, iteration_num):
-        # TODO: Update for the history buffer
+        param_history.update(param)
         L = self.get_delay(iteration_num)
         if L > 0:
-            delayed_values = param_history[L]
-            param_history.update(param)
-            param.copy_(delayed_values)
-        else:
-            param_history.update(param)
-        return param, param_history
+            param.copy_(param_history[L])
 
         
 class Undelayed(DelayDistribution):
@@ -84,7 +69,7 @@ class Undelayed(DelayDistribution):
 
 class Uniform(ParallelDiscreteDelay):
     def get_delay(self, iteration_num):
-        return self.max_L
+        return torch.tensor(self.max_L)
 
 class Stochastic(DiscreteDelay):
     def sample(self, size, iteration_num):
@@ -96,5 +81,5 @@ class Decaying(ParallelDiscreteDelay):
         self.step_size = step_size
 
     def get_delay(self, iteration_num):
-        return max(0, self.max_L - (iteration_num // self.step_size))
+        return torch.tensor(max(0, self.max_L-(iteration_num//self.step_size)))
 
