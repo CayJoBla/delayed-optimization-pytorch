@@ -36,5 +36,6 @@ class ParamHistoryBuffer:
         """Gather the delayed parameter from the history buffer for the given
         delay matrix.
         """
-        return self._buffer.gather(0, self._delay_to_idx(delay), out=out)
+        index = self._delay_to_idx(delay).unsqueeze(0)
+        return torch.gather(self._buffer, 0, index, out=out.unsqueeze(0))
         
