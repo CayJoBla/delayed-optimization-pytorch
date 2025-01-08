@@ -1,0 +1,66 @@
+[
+    {
+        "params": {
+            "optimizer": "Adam",
+            "optimizer_kwargs": {
+                "lr": 0.001
+            },
+            "delay": "Undelayed",
+            "max_L": 0,
+            "batch_size": 32,
+            "num_epochs": 3,
+            "lr_scheduler": null,
+            "lr_scheduler_kwargs": {},
+            "do_train": true,
+            "do_validate": true,
+            "do_test": false,
+            "logging_steps": 100,
+            "do_progress_bar": true,
+            "do_wandb_logging": true,
+            "wandb_project": "mnist_2c2d_grid_search",
+            "run_name": null,
+            "save_dir": null
+        },
+        "results": {
+            "final_val_loss": 0.06061680852869762,
+            "final_val_acc": 0.9814,
+            "final_test_loss": null,
+            "final_test_acc": null
+        },
+        "run_dir": "/home/yungdankblast/DelayedOptimizationPytorch/wandb/offline-run-20250108_144251-cwjorcu7/files",
+        "run_time": 207.06300139427185,
+        "delay_alg": "buffer"
+    },
+    {
+        "params": {
+            "optimizer": "Adam",
+            "optimizer_kwargs": {
+                "lr": 0.001
+            },
+            "delay": "Undelayed",
+            "max_L": 0,
+            "batch_size": 64,
+            "num_epochs": 3,
+            "lr_scheduler": null,
+            "lr_scheduler_kwargs": {},
+            "do_train": true,
+            "do_validate": true,
+            "do_test": false,
+            "logging_steps": 100,
+            "do_progress_bar": true,
+            "do_wandb_logging": true,
+            "wandb_project": "mnist_2c2d_grid_search",
+            "run_name": null,
+            "save_dir": null
+        },
+        "results": {
+            "final_val_loss": 0.033868064989419626,
+            "final_val_acc": 0.9885,
+            "final_test_loss": null,
+            "final_test_acc": null
+        },
+        "run_dir": "/home/yungdankblast/DelayedOptimizationPytorch/wandb/offline-run-20250108_144617-o89v5il8/files",
+        "run_time": 154.72833108901978,
+        "delay_alg": "buffer"
+    }
+]

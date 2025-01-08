@@ -1,0 +1,66 @@
+[
+    {
+        "params": {
+            "optimizer": "Adam",
+            "optimizer_kwargs": {
+                "lr": 0.001
+            },
+            "delay": "Stochastic",
+            "max_L": 1,
+            "batch_size": 32,
+            "num_epochs": 3,
+            "lr_scheduler": null,
+            "lr_scheduler_kwargs": {},
+            "do_train": true,
+            "do_validate": true,
+            "do_test": false,
+            "logging_steps": 100,
+            "do_progress_bar": true,
+            "do_wandb_logging": true,
+            "wandb_project": "mnist_2c2d_grid_search",
+            "run_name": null,
+            "save_dir": null
+        },
+        "results": {
+            "final_val_loss": 0.03611903041357332,
+            "final_val_acc": 0.989,
+            "final_test_loss": null,
+            "final_test_acc": null
+        },
+        "run_dir": "/home/yungdankblast/DelayedOptimizationPytorch/wandb/offline-run-20250108_142300-q3bj6b3v/files",
+        "run_time": 415.6270241737366,
+        "delay_alg": "buffer"
+    },
+    {
+        "params": {
+            "optimizer": "Adam",
+            "optimizer_kwargs": {
+                "lr": 0.001
+            },
+            "delay": "Stochastic",
+            "max_L": 1,
+            "batch_size": 64,
+            "num_epochs": 3,
+            "lr_scheduler": null,
+            "lr_scheduler_kwargs": {},
+            "do_train": true,
+            "do_validate": true,
+            "do_test": false,
+            "logging_steps": 100,
+            "do_progress_bar": true,
+            "do_wandb_logging": true,
+            "wandb_project": "mnist_2c2d_grid_search",
+            "run_name": null,
+            "save_dir": null
+        },
+        "results": {
+            "final_val_loss": 0.034608080389221335,
+            "final_val_acc": 0.9879,
+            "final_test_loss": null,
+            "final_test_acc": null
+        },
+        "run_dir": "/home/yungdankblast/DelayedOptimizationPytorch/wandb/offline-run-20250108_142956-xkjv64eg/files",
+        "run_time": 263.80703568458557,
+        "delay_alg": "buffer"
+    }
+]

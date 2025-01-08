@@ -1,0 +1,66 @@
+[
+    {
+        "params": {
+            "optimizer": "Adam",
+            "optimizer_kwargs": {
+                "lr": 0.001
+            },
+            "delay": "Stochastic",
+            "max_L": 1,
+            "batch_size": 32,
+            "num_epochs": 3,
+            "lr_scheduler": null,
+            "lr_scheduler_kwargs": {},
+            "do_train": true,
+            "do_validate": true,
+            "do_test": false,
+            "logging_steps": 100,
+            "do_progress_bar": true,
+            "do_wandb_logging": true,
+            "wandb_project": "mnist_2c2d_grid_search",
+            "run_name": null,
+            "save_dir": null
+        },
+        "results": {
+            "final_val_loss": 0.028685438126744404,
+            "final_val_acc": 0.9913,
+            "final_test_loss": null,
+            "final_test_acc": null
+        },
+        "run_dir": "/home/yungdankblast/DelayedOptimizationPytorch/wandb/offline-run-20241106_171952-5byf5ska/files",
+        "run_time": 470.6827566623688,
+        "delay_alg": "default"
+    },
+    {
+        "params": {
+            "optimizer": "Adam",
+            "optimizer_kwargs": {
+                "lr": 0.001
+            },
+            "delay": "Stochastic",
+            "max_L": 1,
+            "batch_size": 64,
+            "num_epochs": 3,
+            "lr_scheduler": null,
+            "lr_scheduler_kwargs": {},
+            "do_train": true,
+            "do_validate": true,
+            "do_test": false,
+            "logging_steps": 100,
+            "do_progress_bar": true,
+            "do_wandb_logging": true,
+            "wandb_project": "mnist_2c2d_grid_search",
+            "run_name": null,
+            "save_dir": null
+        },
+        "results": {
+            "final_val_loss": 0.036244035016294494,
+            "final_val_acc": 0.9879,
+            "final_test_loss": null,
+            "final_test_acc": null
+        },
+        "run_dir": "/home/yungdankblast/DelayedOptimizationPytorch/wandb/offline-run-20241106_172742-35d7hgqn/files",
+        "run_time": 275.952919960022,
+        "delay_alg": "default"
+    }
+]

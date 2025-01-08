@@ -1,0 +1,66 @@
+[
+    {
+        "params": {
+            "optimizer": "Adam",
+            "optimizer_kwargs": {
+                "lr": 0.001
+            },
+            "delay": "Stochastic",
+            "max_L": 1,
+            "batch_size": 32,
+            "num_epochs": 3,
+            "lr_scheduler": null,
+            "lr_scheduler_kwargs": {},
+            "do_train": true,
+            "do_validate": true,
+            "do_test": false,
+            "logging_steps": 100,
+            "do_progress_bar": true,
+            "do_wandb_logging": true,
+            "wandb_project": "mnist_2c2d_grid_search",
+            "run_name": null,
+            "save_dir": null
+        },
+        "results": {
+            "final_val_loss": 0.030693946613505416,
+            "final_val_acc": 0.9899,
+            "final_test_loss": null,
+            "final_test_acc": null
+        },
+        "run_dir": "/home/yungdankblast/DelayedOptimizationPytorch/wandb/offline-run-20241122_161507-9h6p17am/files",
+        "run_time": 461.83697843551636,
+        "delay_alg": "buffer"
+    },
+    {
+        "params": {
+            "optimizer": "Adam",
+            "optimizer_kwargs": {
+                "lr": 0.001
+            },
+            "delay": "Stochastic",
+            "max_L": 1,
+            "batch_size": 64,
+            "num_epochs": 3,
+            "lr_scheduler": null,
+            "lr_scheduler_kwargs": {},
+            "do_train": true,
+            "do_validate": true,
+            "do_test": false,
+            "logging_steps": 100,
+            "do_progress_bar": true,
+            "do_wandb_logging": true,
+            "wandb_project": "mnist_2c2d_grid_search",
+            "run_name": null,
+            "save_dir": null
+        },
+        "results": {
+            "final_val_loss": 0.03863648618319351,
+            "final_val_acc": 0.9871,
+            "final_test_loss": null,
+            "final_test_acc": null
+        },
+        "run_dir": "/home/yungdankblast/DelayedOptimizationPytorch/wandb/offline-run-20241122_162249-d5yh0bg7/files",
+        "run_time": 280.44595170021057,
+        "delay_alg": "buffer"
+    }
+]
