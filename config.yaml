@@ -1,0 +1,13 @@
+hyperparams:
+  lr:
+    max: 10
+    min: 1.0e-05
+    num_samples: 36
+    scale: log10
+    type: float
+  momentum:
+    max: 1.0
+    min: 0.0
+    num_samples: 21
+    scale: linear
+    type: float
