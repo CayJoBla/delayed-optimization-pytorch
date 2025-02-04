@@ -2,6 +2,8 @@ import torch
 from typing import Generator, List, Union
 from abc import ABCMeta, abstractmethod
 
+# --------------------------- Abstract Base Classes ----------------------------
+
 class DelayDistribution(metaclass=ABCMeta):
     """Abstract base class for delay distributions."""
     def __init__(self, max_L: int):
@@ -12,6 +14,27 @@ class DelayDistribution(metaclass=ABCMeta):
 
     def __str__(self):
         return self.__class__.__name__
+
+    def to_dict(self):
+        return {"delay_type": self.__class__.__name__, "max_L": self.max_L}
+
+    @staticmethod
+    def from_dict(params: dict):
+        delay_type = params.pop("delay_type").lower()
+        if delay_type == "undelayed":           # Special case for Undelayed
+            if params.get("max_L", 0) != 0:
+                raise ValueError("Undelayed distribution must have max_L=0.")
+            return Undelayed()
+
+        delay_map = {   # Map delay type strings to their respective classes
+            "uniform": Uniform,
+            "decaying": Decaying,
+            "stochastic": Stochastic
+        }
+        delay_class = delay_map.get(delay_type, None)
+        if delay_class is None:
+            raise ValueError(f"Invalid delay type: {delay_type}")
+        return delay_class(**params)
 
     @abstractmethod
     def __call__(self, param, param_history, iteration_num):
@@ -65,6 +88,8 @@ class ParallelDiscreteDelay(DelayDistribution, metaclass=ABCMeta):
             raise ValueError(f"Delay length cannot be negative. Got value {L}")
         return full_param_state[L], full_param_state[:-1]
 
+# ------------------------ Concrete Delay Distributions ------------------------
+
 class Uniform(ParallelDiscreteDelay):
     def get_delay(self, iteration_num):
         return self.max_L
@@ -76,9 +101,13 @@ class Undelayed(Uniform):
 class Decaying(ParallelDiscreteDelay):
     def __init__(self, max_L, step_size):
         super().__init__(max_L)
+        self.step_size = step_size
 
     def get_delay(self, iteration_num):
         return max(0, self.max_L - (iteration_num // self.step_size))
+
+    def to_dict(self):
+        return {**super().to_dict(), "step_size": self.step_size}
 
 class Stochastic(DiscreteDelay):
     def sample(self, size, iteration_num):
