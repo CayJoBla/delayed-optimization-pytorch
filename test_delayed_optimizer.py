@@ -42,9 +42,8 @@ class TestDelayedOptimizerPytorch(unittest.TestCase):
 
     def test_undelayed(self):
         undelayed_model = get_test_model()
-        undelayed_optimizer = DelayedOptimizer(
+        undelayed_optimizer = DelayedOptimizer(self.base_optimizer)(
             params = undelayed_model.parameters(),
-            optimizer_class = self.base_optimizer,
             delay = 0,
         )
 
@@ -70,11 +69,11 @@ class TestDelayedOptimizerPytorch(unittest.TestCase):
 
     def test_stochastic_delay(self):
         model = get_test_model()
-        delayed_optimizer = DelayedOptimizer(
+        delayed_optimizer = DelayedOptimizer(self.base_optimizer)(
             params = model.parameters(),
-            optimizer_class = self.base_optimizer,
             delay = Stochastic(max_L=5),
         )
+        print(delayed_optimizer.param_groups[0]['history'])
 
         X, labels = get_test_data()
         for x, label in zip(X, labels):

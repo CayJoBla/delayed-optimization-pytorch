@@ -1,2 +1,2 @@
 pytorch
-
+bayesian-optimization==1.4.3

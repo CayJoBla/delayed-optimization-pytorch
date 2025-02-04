@@ -6,3 +6,12 @@ Furthermore, this algorithm does not affect the leading-order computational comp
 
 ## Interfacing with Pytorch
 Specifically, this repository contains a wrapper for Pytorch optimization algorithm implementations that will apply a variety of different time delays to the optimizer.
+
+## Installing DeepOBS
+For this project, we use the development version of the DeepOBS benchmarking library for its pytorch support on a variety of benchmarking tasks.
+
+For the editable version of DeepOBS:
+```bash
+pip install -e 'git+https://github.com/fsschneider/DeepOBS.git@develop#egg=deepobs'
+```
+For this, it is important that you use the 1.4.3 version of the `bayesian-optimization` package, as the latest version is not compatible.
