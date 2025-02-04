@@ -1,6 +1,7 @@
 from torch import nn
 
 class mnist_2c2d_net(nn.Sequential):
+    """A basic CNN architecture for MNIST."""
     def __init__(self, num_outputs):
         super().__init__()
         self.add_module(
@@ -56,7 +57,7 @@ class mnist_2c2d_net(nn.Sequential):
             nn.Linear(in_features=1024, out_features=num_outputs)
         )
 
-        # init the layers
+        # Initialize weights
         for module in self.modules():
             if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
                 nn.init.constant_(module.bias, 0.05)
