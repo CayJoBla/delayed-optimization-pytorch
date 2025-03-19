@@ -3,6 +3,8 @@ from torch.optim import Optimizer
 from torch.optim.optimizer import _get_scalar_dtype, ParamsT
 from typing import Union, Callable, Optional, Type
 
+import time
+
 from .distributions import DelayDistribution, Uniform, Undelayed
 
 # TODO: Ideally the application of delays should be done in parallel (with GPU 
@@ -11,7 +13,7 @@ from .distributions import DelayDistribution, Uniform, Undelayed
 # TODO: I think the parameter history should probably be saved on RAM not VRAM, 
 #       so I should probably check for that
 
-def DelayedOptimizer(base_optimizer_class: Type[Optimizer]):
+def DelayedOptimizer(base_optimizer_class: Type[Optimizer], auto_delay: bool = True):
     """Returns a new optimizer class that wraps a given optimizer class to
     implement delayed optimization on that optimization algorithm.
     """
@@ -19,6 +21,7 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer]):
     class DelayedOptimizerWrapper(base_optimizer_class):
         """Implements delayed optimization for a given optimizer class."""
         base_optimizer = base_optimizer_class
+        _auto_delay = auto_delay
 
         def __init__(
             self, 
@@ -110,8 +113,9 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer]):
             Should be called before the forward pass in order to compute the correct
             gradient and loss values.
             """
-            # TODO: Implement parallelization for applying delays
+            print("Applying delays...") # TODO: TEMP
             for group in self.param_groups:
+                group_start = time.time()   # TODO: TEMP
                 for i, (param, param_history) in enumerate(zip(group["params"],
                                                                 group["history"])):
                     iteration_num = self.state[param].get(
@@ -124,11 +128,21 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer]):
                             param_history, 
                             iteration_num
                         )
+                        start = time.time() # TODO: TEMP
                         param.copy_(delayed_param)
                         param_history.copy_(updated_history)
+                    print(f"Copy to param time: {time.time()-start}")   # TODO: TEMP
+                print(f"Total group time: {time.time()-group_start}\n") # TODO: TEMP
+
+        def zero_grad(self):
+            """Zeroes the gradients of all optimized parameters and applies delays."""
+            super().zero_grad()
+            if self._auto_delay:
+                self.apply_delays()
 
     DelayedOptimizerWrapper.__name__ = f"Delayed{base_optimizer_class.__name__}"
 
     return DelayedOptimizerWrapper
 
-        
+DelayedAdam = DelayedOptimizer(torch.optim.Adam)   
+DelayedSGD = DelayedOptimizer(torch.optim.SGD)

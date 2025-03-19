@@ -1,6 +1,7 @@
 import torch
 from typing import Generator, List, Union
 from abc import ABCMeta, abstractmethod
+import time # TODO: TEMP
 
 # --------------------------- Abstract Base Classes ----------------------------
 
@@ -65,9 +66,11 @@ class DiscreteDelay(DelayDistribution, metaclass=ABCMeta):
         pass
 
     def __call__(self, param, param_history, iteration_num):
+        start = time.time() # TODO: TEMP
         full_param_state = torch.cat([param.detach().unsqueeze(0), param_history], dim=0)
         D = self.sample(param.size(), iteration_num)
         delayed_param = full_param_state.gather(0, D.unsqueeze(0)).squeeze(0)
+        print("Compute delay time:", time.time() - start)   # TODO: TEMP
         return delayed_param, full_param_state[:-1]
 
 
