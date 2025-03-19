@@ -2,6 +2,7 @@ import torch
 from torch.optim import Optimizer
 from torch.optim.optimizer import _get_scalar_dtype, ParamsT
 from typing import Union, Callable, Optional, Type
+from concurrent.futures import ThreadPoolExecutor
 
 import time
 
@@ -13,7 +14,7 @@ from .distributions import DelayDistribution, Uniform, Undelayed
 # TODO: I think the parameter history should probably be saved on RAM not VRAM, 
 #       so I should probably check for that
 
-def DelayedOptimizer(base_optimizer_class: Type[Optimizer], auto_delay: bool = True):
+def DelayedOptimizer(base_optimizer_class: Type[Optimizer]):
     """Returns a new optimizer class that wraps a given optimizer class to
     implement delayed optimization on that optimization algorithm.
     """
@@ -21,7 +22,6 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer], auto_delay: bool = T
     class DelayedOptimizerWrapper(base_optimizer_class):
         """Implements delayed optimization for a given optimizer class."""
         base_optimizer = base_optimizer_class
-        _auto_delay = auto_delay
 
         def __init__(
             self, 
@@ -29,19 +29,21 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer], auto_delay: bool = T
             *args,
             delay: Union[DelayDistribution, dict, int] = 0,
             init_history: Optional[Callable] = None,
+            auto_delay: bool = True,
+            history_device: Optional[torch.device] = None,
             **kwargs
         ):
             super().__init__(params, *args, **kwargs)
 
             # Initialize default delay distribution
             self.defaults['delay'] = self._parse_delay(delay)
+            self.auto_delay = auto_delay
 
-            # Initialize default parameter history initialization function
+            # Initialize parameter histories
             if init_history is None:
                 init_history = self._init_param_history
             self.defaults['init_history'] = init_history
-            
-            self._init_delayed_param_groups()   # Initialize parameter histories
+            self._init_delayed_param_groups(history_device=history_device)
 
         def __repr__(self):
             return f"Delayed{super().__repr__()}"
@@ -66,7 +68,7 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer], auto_delay: bool = T
                 raise ValueError(f"Invalid delay parameter type: {type(delay)}.")
 
         @staticmethod
-        def _init_param_history(param_group):
+        def _init_param_history(param_group, device=None):
             """Default parameter history initialization. 
 
             Default behavior is to initialize the history with L copies of the 
@@ -74,13 +76,13 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer], auto_delay: bool = T
             """
             L = param_group["delay"].max_L
             if L == 0:
-                history = [torch.empty(0, *p.size()) for p in param_group["params"]]
+                history = [torch.empty(0, *p.size()).to(device) for p in param_group["params"]]
             else:
                 history = [torch.stack([p.clone().detach() for _ in range(L)],
-                                        dim=0) for p in param_group["params"]]
+                                        dim=0).to(device) for p in param_group["params"]]
             param_group["history"] = history
 
-        def _init_delayed_param_groups(self):
+        def _init_delayed_param_groups(self, history_device=None):
             """Initialize delay parameters for each parameter group, including past 
             parameters and maximal delay length, for each parameter group.
             """
@@ -91,7 +93,7 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer], auto_delay: bool = T
                 L = param_group["delay"].max_L
                 init_history = param_group.get("init_history", 
                                                 self.defaults["init_history"])
-                init_history(param_group)    # TODO: Is this the best way to do this?
+                init_history(param_group, device=history_device)    # TODO: Is this the best way to do this?
 
                 # Check the size of the delay history
                 params = param_group["params"]
@@ -107,38 +109,49 @@ def DelayedOptimizer(base_optimizer_class: Type[Optimizer], auto_delay: bool = T
                 if L > self.max_L:
                     self.max_L = L
 
+        def _delay_param(self, param, param_history, delay):
+            """Function to delay a single parameter."""
+            if param.device != param_history.device:
+                param_history = param_history.to(param.device)
+            with torch.no_grad():
+                delayed_param, updated_history = delay(
+                    param, 
+                    param_history, 
+                    self.state[param].get("step", torch.tensor(0.0, dtype=_get_scalar_dtype()))
+                )
+                param.copy_(delayed_param)
+                param_history.copy_(updated_history)
+
         def apply_delays(self):
             """Applies delays to the parameters being optimized.
 
             Should be called before the forward pass in order to compute the correct
             gradient and loss values.
             """
-            print("Applying delays...") # TODO: TEMP
             for group in self.param_groups:
-                group_start = time.time()   # TODO: TEMP
-                for i, (param, param_history) in enumerate(zip(group["params"],
-                                                                group["history"])):
-                    iteration_num = self.state[param].get(
-                        "step", 
-                        torch.tensor(0.0, dtype=_get_scalar_dtype())
-                    )
-                    with torch.no_grad(): 
-                        delayed_param, updated_history = group["delay"](
-                            param, 
-                            param_history, 
-                            iteration_num
+                for param, param_history in zip(group["params"], group["history"]):
+                    self._delay_param(param, param_history, group["delay"])
+
+        def apply_delays_parallel(self):
+            """Applies delays to the parameters being optimized in parallel."""
+            with ThreadPoolExecutor() as executor:
+                processes = []
+                for group in self.param_groups:
+                    for param, param_history in zip(group["params"], group["history"]):
+                        processes.append(
+                            executor.submit(self._delay_param, param, param_history, group["delay"])
                         )
-                        start = time.time() # TODO: TEMP
-                        param.copy_(delayed_param)
-                        param_history.copy_(updated_history)
-                    print(f"Copy to param time: {time.time()-start}")   # TODO: TEMP
-                print(f"Total group time: {time.time()-group_start}\n") # TODO: TEMP
+                for process in processes:  # Wait for all processes to complete
+                    process.result()
 
         def zero_grad(self):
             """Zeroes the gradients of all optimized parameters and applies delays."""
             super().zero_grad()
-            if self._auto_delay:
+            start = time.time()
+            if self.auto_delay:
                 self.apply_delays()
+                # self.apply_delays_parallel()
+            return time.time() - start
 
     DelayedOptimizerWrapper.__name__ = f"Delayed{base_optimizer_class.__name__}"
 

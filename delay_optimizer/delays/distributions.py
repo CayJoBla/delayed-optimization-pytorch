@@ -59,18 +59,16 @@ class DiscreteDelay(DelayDistribution, metaclass=ABCMeta):
     tensor of integer delays according to the input size and iteration number.
     """
     @abstractmethod
-    def sample(self, size, iteration_num) -> torch.Tensor:
+    def sample(self, size, iteration_num, device=None) -> torch.Tensor:
         """Returns a tensor of integer delays according to the input size and
         iteration number.
         """
         pass
 
     def __call__(self, param, param_history, iteration_num):
-        start = time.time() # TODO: TEMP
         full_param_state = torch.cat([param.detach().unsqueeze(0), param_history], dim=0)
-        D = self.sample(param.size(), iteration_num)
+        D = self.sample(param.size(), iteration_num, device=param.device)
         delayed_param = full_param_state.gather(0, D.unsqueeze(0)).squeeze(0)
-        print("Compute delay time:", time.time() - start)   # TODO: TEMP
         return delayed_param, full_param_state[:-1]
 
 
@@ -113,6 +111,6 @@ class Decaying(ParallelDiscreteDelay):
         return {**super().to_dict(), "step_size": self.step_size}
 
 class Stochastic(DiscreteDelay):
-    def sample(self, size, iteration_num):
-        return torch.randint(0, self.max_L+1, size=size)
+    def sample(self, size, iteration_num, device=None):
+        return torch.randint(0, self.max_L+1, size=size, device=device)
 
