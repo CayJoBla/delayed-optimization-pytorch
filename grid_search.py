@@ -1,111 +1,83 @@
 import torch
 from torch.optim import Adam, SGD, Optimizer
-import wandb
-import time
-import argparse
 from itertools import product
 import yaml
 import os
-from typing import Type, Union
+import sys
 import numpy as np
 import warnings
-
 from deepobs import pytorch as pt
 
 from delay_optimizer.delays.delayed_optimizer import DelayedOptimizer
-from delay_optimizer.delays.distributions import Undelayed, Stochastic
 
 
-def get_param_grid(config):
-    dtype = config['type']
-    min_val = config['min']
-    max_val = config['max']
-    scale = config['scale']
-    num_samples = config['num_samples']
-
-    if "log" in scale:
-        log_base = 10 if scale == "log" else int(scale.split("log")[1])
-        min_exp = np.emath.logn(log_base, min_val)
-        max_exp = np.emath.logn(log_base, max_val)
-        param_grid = np.logspace(min_exp, max_exp, num_samples, dtype=dtype)
-    elif scale == "linear":
-        param_grid = np.linspace(min_val, max_val, num_samples, dtype=dtype)
+def get_grid(tunable=False, min_val=None, max_val=None, scale=None, 
+                num_samples=None, default=None, dtype=None, **kwargs):
+    if tunable:
+        if "log" in scale:
+            log_base = 10 if scale == "log" else int(scale.split("log")[1])
+            min_exp = np.emath.logn(log_base, min_val)
+            max_exp = np.emath.logn(log_base, max_val)
+            grid = np.logspace(min_exp, max_exp, num_samples, dtype=dtype)
+        elif scale == "linear":
+            grid = np.linspace(min_val, max_val, num_samples, dtype=dtype)
+        else:
+            raise ValueError(f"Unknown scale '{scale}'")
     else:
-        raise ValueError(f"Unknown scale '{scale}'")
-    return param_grid
+        default = min_val if default is None else default
+        default = max_val if default is None else default
+        if default is None:
+            raise ValueError("Must specify default value for non-tunable hyperparameter.")
+        grid = [default]
+        
+    return grid
+
+def get_param_grid(hyperparam_config):
+    hyperparams = {}
+    param_grid = {}
+    for param, values in hyperparam_config.items():
+        print(param)
+        print(values)
+        if param == "delay":
+            if values.get("dtype", "dict") != "dict":
+                raise warnings.warn(f"Delay hyperparameter should be of type 'dict', not '{values['dtype']}'.")
+            if values.get("tunable", False):
+                raise NotImplementedError("Tunable delay hyperparameters are not yet supported.")
+            hyperparams[param] = {"type": dict}
+            param_grid[param] = [{
+                "delay_type": values["delay_type"], 
+                "max_L": values["max_L"]
+            }]
+            continue
+    
+        hyperparams[param] = {"type": values.get("dtype", float)}
+        param_grid[param] = get_grid(**values)
+
+    return hyperparams, param_grid
 
 
-def run_grid_search(testproblem, optimizer, delay, max_L, lr, momentum, 
-                    config_file, tunable_params, batch_size, num_epochs):
+def run_grid_search(config_file=None):
+    # Load the config
+    if config_file is None:
+        raise ValueError("Must specify job configuration file for hyperparameter optimization.")
+    with open(config_file, "r") as f:
+        config = yaml.safe_load(f)
+
     # Get delayed optimizer class
-    if optimizer == "adam":
+    if config["optimizer"] == "adam":
         optimizer = Adam
     elif optimizer == "sgd":
         optimizer = SGD
-    elif not issubclass(optimizer, torch.optim.Optimizer):
-        raise ValueError("'optimizer' must be 'adam', 'sgd', or a torch.optim.Optimizer subclass.")
+    else:
+        raise ValueError(f"'optimizer' parameter not recognized: {config['optimizer']}.")
     delayed_opt_class = DelayedOptimizer(optimizer)
 
-    # Define tunable hyperparameters
-    tune_lr = False
-    tune_momentum = False
-    for param in tunable_params:
-        if param == "lr":
-            tune_lr = True
-        elif param == "momentum":
-            tune_momentum = True
-        else:
-            raise ValueError(f"Unrecognized tunable hyperparameter: '{param}'")
-
-    # Check for errors and determine whether to load the config
-    if lr is not None:
-        if not tune_lr and len(lr) > 1:
-            warnings.warn("'lr' not specified as a tunable parameter, ignoring additional values.")
-            lr = lr[:1]
-    elif not tune_lr:
-        raise ValueError("Must specify 'lr' as a tunable parameter and/or provide value(s) for 'lr'.")
-    if momentum is not None:
-        if not tune_momentum and len(momentum) > 1:
-            warnings.warn("'momentum' not specified as a tunable parameter, ignoring additional values.")
-            momentum = momentum[:1]
-    
-    lr_from_config = (tune_lr and lr is None)
-    momentum_from_config = (tune_momentum and momentum is None)
-    load_config = lr_from_config or momentum_from_config
-    if not load_config and config_file is not None:
-        warning.warn("Ignoring 'config_file' since all tunable hyperparameters are specified.")
-
-    # Initialize parameter grid
-    param_grid = {}
-    if lr is not None:
-        param_grid["lr"] = np.array(lr)
-    if momentum is not None:
-        param_grid["momentum"] = np.array(momentum)
-
-    # Load hyperparameter grid from config
-    if load_config:
-        if config_file is None:
-            raise ValueError("Must specify 'config_file' if not all tunable hyperparameters are specified.")
-        with open(config_file, "r") as f:
-            config = yaml.safe_load(f)['hyperparams']
-        if lr_from_config:
-            if "lr" not in config:
-                raise ValueError("Tunable parameter 'lr' is not specified either in the config file or as an argument.")
-            param_grid["lr"] = get_param_grid(config["lr"])
-            
-        if momentum_from_config:
-            if "momentum" not in config:
-                raise ValueError("Tunable parameter 'momentum' is not specified either in the config file or as an argument.")
-            param_grid["momentum"] = get_param_grid(config["momentum"])
-
-    # Check parameter grid and define hyperparams
-    if "lr" not in param_grid:
-        raise ValueError("No learning rates specified in the parameter grid.")
-    hyperparams = {param: {"type": float} for param in param_grid.keys()}
-
-    # Add delay hyperparameters (not tunable)
-    hyperparams["delay"] = {"type": dict}
-    param_grid["delay"] = [{"delay_type": delay, "max_L": max_L}]
+    # Get hyperparameter grid
+    hyperparams, param_grid = get_param_grid(config["hyperparams"])
+    if config["optimizer"] == "adam":
+        hyperparams.pop("momentum")
+        param_grid.pop("momentum")
+    delay = param_grid.pop("delay")[0]
 
     # Apply product over grid search space
     def grid_search(search_space):
@@ -118,87 +90,19 @@ def run_grid_search(testproblem, optimizer, delay, max_L, lr, momentum,
     
     # Run grid search
     for params in grid_search(param_grid):
+        params["delay"] = {"delay_type": delay["delay_type"], "max_L": delay["max_L"]}
         print(f"Running with hyperparameters: \n{params}\n")
-        # runner.run(
-        #     testproblem=testproblem, 
-        #     hyperparams=params, 
-        #     num_epochs=num_epochs,
-        #     batch_size=batch_size,
-        # )
+        runner.run(
+            testproblem=config["testproblem"], 
+            hyperparams=params, 
+            num_epochs=config.get("num_epochs", 1),
+            batch_size=config.get("batch_size", 32),
+        )
 
 
 if __name__ == "__main__":
-    argparser = argparse.ArgumentParser(
-        description="Run hyperparameter optimization for a given task."
-    )
-    argparser.add_argument(
-        "--testproblem",
-        "--task",
-        type=str,
-        default=None,
-        help="The name of the task to train on for hyperparameter optimization."
-    )
-    argparser.add_argument(
-        "--optimizer",
-        type=str,
-        default="adam",
-        help="The optimizer to use for training."
-    )
-    argparser.add_argument(
-        "--delay",
-        "--delay_type",
-        type=str,
-        default="undelayed",
-        help="The delay distribution to use for training."
-    )
-    argparser.add_argument(
-        "--max_L",
-        type=int,
-        default=0,
-        help="The maximum delay length to use in the delay distribution."
-    )
-    argparser.add_argument(
-        "--lr",
-        "--learning_rate",
-        type=float,
-        nargs="*",
-        default=None,
-        help="The learning rate or list of learning rates to use for optimization / grid search."
-    )
-    argparser.add_argument(
-        "--momentum",
-        type=float,
-        nargs="*",
-        default=None,
-        help="The momentum or list of momentum values to use for optimization / grid search."
-    )
-    argparser.add_argument(
-        "--config_file",
-        "--config",
-        type=str,
-        default=None,
-        help="The path to the configuration file for hyperparameter optimization."
-    )
-    argparser.add_argument(
-        "--tunable_params",
-        "--tunable",
-        type=str,
-        nargs="*",
-        default=["lr"],
-        help="The hyperparameters to tune in the grid search."
-    )
-    argparser.add_argument(
-        "--batch_size",
-        type=int,
-        default=None,
-        help="The batch size to use for training."
-    )
-    argparser.add_argument(
-        "--num_epochs",
-        type=int,
-        default=1,
-        help="The number of epochs to train for."
-    )
-
-    args = argparser.parse_args()
-    results = run_grid_search(**vars(args))
+    # if len(sys.argv) != 2:
+    #     raise ValueError(f"Usage: python {sys.argv[0]} <job_config_filepath>")
+    # results = run_grid_search(sys.argv[1])
+    CONFIG = "config_undelayed.yaml"
+    run_grid_search(CONFIG)

@@ -18,8 +18,8 @@ hyperparams:
     dtype: float
   delay:
     tunable: false
-    delay_type: stochastic
-    max_L: 1
+    delay_type: undelayed
+    max_L: 0
     dtype: dict
 num_epochs: 1
 optimizer: adam

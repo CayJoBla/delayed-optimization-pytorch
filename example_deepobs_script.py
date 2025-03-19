@@ -4,7 +4,7 @@ from torch.optim import Optimizer, Adam
 from deepobs import pytorch as pt
 from typing import Type, Union
 
-from delay_optimizer.delays.delayed_optimizer_dev import DelayedOptimizer
+from delay_optimizer.delays.delayed_optimizer import DelayedOptimizer
 from delay_optimizer.delays.distributions import DelayDistribution, Stochastic
 
 optimizer_class = DelayedOptimizer(Adam)
