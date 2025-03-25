@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --time=1:00:00   # walltime.  hours:minutes:seconds
+#SBATCH --time=2:00:00   # walltime.  hours:minutes:seconds
 #SBATCH --ntasks=1   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gpus=1
@@ -8,8 +8,8 @@
 #SBATCH --mail-type=BEGIN
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL
-#SBATCH --job-name=delayed-grid-search
+#SBATCH --job-name=delayed-opt-rerun
 
 source /home/cayjobla/delayed-optimization-pytorch/.venv/bin/activate
 wandb disabled
-python grid_search.py
+python rerun_best_hyperparams.py

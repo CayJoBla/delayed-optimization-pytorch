@@ -104,5 +104,5 @@ if __name__ == "__main__":
     # if len(sys.argv) != 2:
     #     raise ValueError(f"Usage: python {sys.argv[0]} <job_config_filepath>")
     # results = run_grid_search(sys.argv[1])
-    CONFIG = "config_undelayed.yaml"
+    CONFIG = "config.yaml"
     run_grid_search(CONFIG)
